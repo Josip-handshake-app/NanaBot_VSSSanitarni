@@ -1,0 +1,83 @@
+name: Daily Zagreb jobs
+
+on:
+  schedule:
+    # Europe/Zagreb keeps 11:37 and 16:37 through the October clock change.
+    # A second run only emails ids that are not already stored.
+    - cron: "37 11 * * *"
+      timezone: "Europe/Zagreb"
+    - cron: "37 16 * * *"
+      timezone: "Europe/Zagreb"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-jobs
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Use the latest sent job ids
+        run: |
+          git fetch origin main
+          git checkout origin/main -- sent_jobs.json
+
+      - name: Scrape and send
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
+        run: python scrape_jobs.py
+
+      - name: Commit sent job ids
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp sent_jobs.json "$RUNNER_TEMP/sent_jobs.new.json"
+          git fetch origin main
+          git reset --hard origin/main
+          python - << 'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          def load_ids(path: Path) -> set[str]:
+              if not path.exists():
+                  return set()
+              payload = json.loads(path.read_text(encoding="utf-8"))
+              if isinstance(payload, list):
+                  return {str(item) for item in payload}
+              return {str(item) for item in payload.get("ids", [])}
+
+          current = Path("sent_jobs.json")
+          fresh = Path(os.environ["RUNNER_TEMP"]) / "sent_jobs.new.json"
+          ids = sorted(load_ids(current) | load_ids(fresh))
+          current.write_text(
+              json.dumps({"ids": ids}, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          git add sent_jobs.json
+          if git diff --cached --quiet; then
+            echo "No changes to sent_jobs.json"
+            exit 0
+          fi
+          git commit -m "Update sent job ids"
+          git push
