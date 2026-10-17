@@ -1,4 +1,8 @@
-"""Daily scraper for Zagreb VSS sanitary-engineer public job notices.
+"""Daily scraper for Zagreb VSS public job notices.
+
+The state portal keeps every VSS job in Zagreb from the Ministry of Health
+or the Ministry of Environmental Protection. Every other source keeps VSS
+sanitary-engineer jobs in Zagreb.
 
 Reads RESEND_API_KEY, RECEIVER_EMAIL, and RESEND_FROM_EMAIL from the
 environment. Tracks mailed notices in sent_jobs.json next to this file so a
@@ -707,6 +711,22 @@ def collect_kindergartens(session: requests.Session, today: date) -> list[Job]:
     return jobs
 
 
+MINISTRY_EMPLOYER_MARKERS = (
+    "ministarstvo zdravstva",
+    "zaštite okoliša",
+)
+
+
+def is_target_ministry(employer: str) -> bool:
+    """Health, or environmental protection, matched on a lowercased substring.
+
+    The portal field is DrzavnoTijeloNaziv. A short marker still matches when
+    that name is truncated.
+    """
+    folded = employer.lower()
+    return any(marker in folded for marker in MINISTRY_EMPLOYER_MARKERS)
+
+
 def collect_selekcija(session: requests.Session, today: date) -> list[Job]:
     logger.info("Reading state portal %s", SELEKCIJA_API_URL)
     filters = [
@@ -732,6 +752,9 @@ def collect_selekcija(session: requests.Session, today: date) -> list[Job]:
         records = response.json().get("Records") or []
         logger.info("State portal page skip=%s returned %s rows", skip, len(records))
         for record in records:
+            office = str(record.get("DrzavnoTijeloNaziv") or "").strip()
+            if not is_target_ministry(office):
+                continue
             education = str(record.get("StrucnaSprema") or "")
             workplace = str(record.get("MjestoRada") or "")
             if not is_vss(education) or not location_is_zagreb(workplace):
@@ -741,7 +764,6 @@ def collect_selekcija(session: requests.Session, today: date) -> list[Job]:
                 or record.get("NazivRadnogMjesta")
                 or ""
             ).strip()
-            office = str(record.get("DrzavnoTijeloNaziv") or "").strip()
             competition_id = str(record.get("NatjecajID") or record.get("ID") or "")
             code = str(record.get("SifraNatjecaja") or "").strip()
             due_text = str(record.get("RokZaPrijavuISO8601") or "").strip()
@@ -767,7 +789,7 @@ def collect_selekcija(session: requests.Session, today: date) -> list[Job]:
             break
         skip += page_size
         time.sleep(REQUEST_PAUSE_SECONDS)
-    logger.info("State portal VSS positions: %s", len(jobs))
+    logger.info("State portal ministry VSS positions: %s", len(jobs))
     return jobs
 
 
@@ -1329,14 +1351,14 @@ def render_messages(jobs: list[Job]) -> tuple[str, str]:
     ordered = sorted(jobs, key=lambda job: (job.office.lower(), job.title.lower()))
     text_lines = [
         "Novi oglasi za radna mjesta VSS u Zagrebu.",
-        "Državni portal: sva VSS mjesta u Zagrebu. Ostali izvori: sanitarni inženjer.",
+        "Državni portal: sva VSS mjesta Ministarstva zdravstva i Ministarstva zaštite okoliša u Zagrebu. Ostali izvori: sanitarni inženjer.",
         "",
     ]
     html_parts = [
         "<!DOCTYPE html>",
         "<html><body>",
         "<p>Novi oglasi za radna mjesta VSS u Zagrebu.<br>"
-        "Državni portal: sva VSS mjesta u Zagrebu. Ostali izvori: sanitarni inženjer.</p>",
+        "Državni portal: sva VSS mjesta Ministarstva zdravstva i Ministarstva zaštite okoliša u Zagrebu. Ostali izvori: sanitarni inženjer.</p>",
     ]
     for job in ordered:
         text_lines.append(format_job_text(job))
@@ -1352,7 +1374,7 @@ def format_job_text(job: Job) -> str:
         code = job.code or "nije navedena"
         return (
             f"• {job.office.upper()} - {job.title} "
-            f"(Link: {SELEKCIJA_PORTAL_URL} | Šifra: {code})"
+            f"(Link: {SELEKCIJA_PORTAL_URL} | Šifra: {code} )"
         )
     return f"• {job.office} - {job.title} (Link: {job.url})"
 
@@ -1363,7 +1385,7 @@ def format_job_html(job: Job) -> str:
         return (
             "<p>• {office} - {title} "
             "(Link: <a href=\"{portal}\">{portal}</a> | "
-            "<strong>Šifra: {code}</strong>)"
+            "Šifra: <strong>{code}</strong>&nbsp;)"
             "<br>Rok: {deadline}</p>".format(
                 office=escape(job.office.upper()),
                 title=escape(job.title),
