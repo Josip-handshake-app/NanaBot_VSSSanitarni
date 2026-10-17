@@ -721,74 +721,87 @@ def is_target_ministry(employer: str) -> bool:
     """Health, or environmental protection, matched on a lowercased substring.
 
     The portal field is DrzavnoTijeloNaziv. A short marker still matches when
-    that name is truncated.
+    that name is truncated. The employer must itself be a ministry, so a unit
+    such as "Služba zaštite okoliša" inside another body does not pass.
     """
     folded = employer.lower()
+    if "ministarstvo" not in folded:
+        return False
     return any(marker in folded for marker in MINISTRY_EMPLOYER_MARKERS)
 
 
 def collect_selekcija(session: requests.Session, today: date) -> list[Job]:
     logger.info("Reading state portal %s", SELEKCIJA_API_URL)
-    filters = [
-        {"Property": "MjestoRada", "Operation": "Contains", "Value": "Zagreb"},
-        {"Property": "StrucnaSprema", "Operation": "Contains", "Value": "VSS"},
-        {"Property": "StatusNaziv", "Operation": "Equals", "Value": "Prijave u tijeku"},
-    ]
     jobs: list[Job] = []
-    skip = 0
+    seen: set[str] = set()
     page_size = 50
-    while True:
-        response = session.get(
-            SELEKCIJA_API_URL,
-            params={
-                "filters": json.dumps(filters, ensure_ascii=False),
-                "sort": "RokZaPrijavuISO8601 desc",
-                "top": str(page_size),
-                "skip": str(skip),
-            },
-            timeout=REQUEST_TIMEOUT,
-        )
-        response.raise_for_status()
-        records = response.json().get("Records") or []
-        logger.info("State portal page skip=%s returned %s rows", skip, len(records))
-        for record in records:
-            office = str(record.get("DrzavnoTijeloNaziv") or "").strip()
-            if not is_target_ministry(office):
-                continue
-            education = str(record.get("StrucnaSprema") or "")
-            workplace = str(record.get("MjestoRada") or "")
-            if not is_vss(education) or not location_is_zagreb(workplace):
-                continue
-            title = str(
-                record.get("RadnoMjestoNaziv")
-                or record.get("NazivRadnogMjesta")
-                or ""
-            ).strip()
-            competition_id = str(record.get("NatjecajID") or record.get("ID") or "")
-            code = str(record.get("SifraNatjecaja") or "").strip()
-            due_text = str(record.get("RokZaPrijavuISO8601") or "").strip()
-            due = parse_iso(due_text)
-            if not competition_id or not title:
-                continue
-            deadline = due_text or "nije naveden"
-            if due is not None and due < today:
-                logger.info("Skipping expired state competition %s", code or competition_id)
-                continue
-            jobs.append(
-                Job(
-                    key=f"selekcija:{competition_id}",
-                    office=office or "Državno tijelo",
-                    title=title.upper(),
-                    url=SELEKCIJA_PORTAL_URL,
-                    deadline=deadline,
-                    deadline_date=due,
-                    code=code,
-                )
+    for marker in MINISTRY_EMPLOYER_MARKERS:
+        filters = [
+            {"Property": "DrzavnoTijeloNaziv", "Operation": "Contains", "Value": marker},
+            {"Property": "MjestoRada", "Operation": "Contains", "Value": "Zagreb"},
+            {"Property": "StrucnaSprema", "Operation": "Contains", "Value": "VSS"},
+            {"Property": "StatusNaziv", "Operation": "Equals", "Value": "Prijave u tijeku"},
+        ]
+        skip = 0
+        while True:
+            response = session.get(
+                SELEKCIJA_API_URL,
+                params={
+                    "filters": json.dumps(filters, ensure_ascii=False),
+                    "sort": "RokZaPrijavuISO8601 desc",
+                    "top": str(page_size),
+                    "skip": str(skip),
+                },
+                timeout=REQUEST_TIMEOUT,
             )
-        if len(records) < page_size:
-            break
-        skip += page_size
-        time.sleep(REQUEST_PAUSE_SECONDS)
+            response.raise_for_status()
+            records = response.json().get("Records") or []
+            logger.info(
+                "State portal %s skip=%s returned %s rows",
+                marker,
+                skip,
+                len(records),
+            )
+            for record in records:
+                office = str(record.get("DrzavnoTijeloNaziv") or "").strip()
+                if not is_target_ministry(office):
+                    logger.info("Skipping state employer outside the two ministries: %s", office)
+                    continue
+                education = str(record.get("StrucnaSprema") or "")
+                workplace = str(record.get("MjestoRada") or "")
+                if not is_vss(education) or not location_is_zagreb(workplace):
+                    continue
+                title = str(
+                    record.get("RadnoMjestoNaziv")
+                    or record.get("NazivRadnogMjesta")
+                    or ""
+                ).strip()
+                competition_id = str(record.get("NatjecajID") or record.get("ID") or "")
+                code = str(record.get("SifraNatjecaja") or "").strip()
+                due_text = str(record.get("RokZaPrijavuISO8601") or "").strip()
+                due = parse_iso(due_text)
+                if not competition_id or not title or competition_id in seen:
+                    continue
+                seen.add(competition_id)
+                deadline = due_text or "nije naveden"
+                if due is not None and due < today:
+                    logger.info("Skipping expired state competition %s", code or competition_id)
+                    continue
+                jobs.append(
+                    Job(
+                        key=f"selekcija:{competition_id}",
+                        office=office or "Državno tijelo",
+                        title=title.upper(),
+                        url=SELEKCIJA_PORTAL_URL,
+                        deadline=deadline,
+                        deadline_date=due,
+                        code=code,
+                    )
+                )
+            if len(records) < page_size:
+                break
+            skip += page_size
+            time.sleep(REQUEST_PAUSE_SECONDS)
     logger.info("State portal ministry VSS positions: %s", len(jobs))
     return jobs
 
