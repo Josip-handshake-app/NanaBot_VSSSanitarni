@@ -2,7 +2,7 @@
 
 The state portal keeps every VSS job in Zagreb from the Ministry of Health
 or the Ministry of Environmental Protection. Every other source keeps VSS
-sanitary-engineer jobs in Zagreb.
+sanitary jobs in Zagreb.
 
 Reads RESEND_API_KEY, RECEIVER_EMAIL, and RESEND_FROM_EMAIL from the
 environment. Tracks mailed notices in sent_jobs.json next to this file so a
@@ -89,7 +89,6 @@ VSS_RE = re.compile(
     re.IGNORECASE,
 )
 SANITARY_RE = re.compile(r"sanitarn", re.IGNORECASE)
-ENGINEER_RE = re.compile(r"in[zž]enjer", re.IGNORECASE)
 ZAGREB_CITY_RE = re.compile(r"\bzagreb(?:a|u|om|e)?\b", re.IGNORECASE)
 JOB_HEADING_RE = re.compile(r"(?m)^[ \t]*(?=\d{1,2}\.\s+\S)")
 MONTHS = {
@@ -255,14 +254,14 @@ def is_vss(text: str) -> bool:
     return VSS_RE.search(text) is not None
 
 
-def is_sanitary_engineer(text: str) -> bool:
-    """Stem match for sanitarni/sanitarna/sanitarnog and inženjer/inzenjer forms."""
-    return SANITARY_RE.search(text) is not None and ENGINEER_RE.search(text) is not None
+def is_sanitary(text: str) -> bool:
+    """Stem match for sanitarni, sanitarna, sanitarnog, and related forms."""
+    return SANITARY_RE.search(text) is not None
 
 
 def matches_vss_sanitary(text: str) -> bool:
-    """VSS (or an equivalent higher degree) and a sanitary-engineer title."""
-    return is_vss(text) and is_sanitary_engineer(text)
+    """VSS (or an equivalent higher degree) and a sanitary role."""
+    return is_vss(text) and is_sanitary(text)
 
 
 def has_city_trigger(text: str) -> bool:
@@ -548,7 +547,7 @@ def collect_city(session: requests.Session, today: date) -> list[Job]:
             if job is not None:
                 jobs.append(job)
                 kept += 1
-        logger.info("%s: %s VSS sanitary-engineer positions", office, kept)
+        logger.info("%s: %s VSS sanitary positions", office, kept)
     return jobs
 
 
@@ -639,7 +638,7 @@ def collect_culture(session: requests.Session, today: date) -> list[Job]:
         )
         if job is not None:
             jobs.append(job)
-    logger.info("Culture VSS sanitary-engineer positions: %s", len(jobs))
+    logger.info("Culture VSS sanitary positions: %s", len(jobs))
     return jobs
 
 
@@ -707,7 +706,7 @@ def collect_kindergartens(session: requests.Session, today: date) -> list[Job]:
         )
         if job is not None:
             jobs.append(job)
-    logger.info("Kindergarten VSS sanitary-engineer positions: %s", len(jobs))
+    logger.info("Kindergarten VSS sanitary positions: %s", len(jobs))
     return jobs
 
 
@@ -919,7 +918,7 @@ def finish_employer_job(
         logger.info("Skipping %s post outside Zagreb: %s", source, title)
         return None
     if not matches_vss_sanitary(f"{notice_text}\n{location}"):
-        logger.info("Skipping %s post without VSS sanitary engineer: %s", source, title)
+        logger.info("Skipping %s post without VSS sanitary role: %s", source, title)
         return None
     if deadline_date is None and published is not None and (today - published).days > 45:
         logger.info("Skipping old %s notice without a deadline: %s", source, title)
@@ -962,7 +961,7 @@ def collect_hep(session: requests.Session, today: date) -> list[Job]:
             description = str(notice.get("OPIS_RADNOG_MJESTA") or "")
             details = f"{condition_text}\n{description}"
             if not matches_vss_sanitary(f"{title}\n{details}"):
-                logger.info("Skipping HEP post without VSS sanitary engineer: %s", title)
+                logger.info("Skipping HEP post without VSS sanitary role: %s", title)
                 continue
             oglas_id = notice.get("OGLAS_ID") or item.get("OGLAS_ID")
             try:
@@ -976,7 +975,7 @@ def collect_hep(session: requests.Session, today: date) -> list[Job]:
                 continue
             seen.add(job.key)
             jobs.append(job)
-    logger.info("HEP VSS sanitary-engineer positions: %s", len(jobs))
+    logger.info("HEP VSS sanitary positions: %s", len(jobs))
     return jobs
 
 
@@ -1004,7 +1003,7 @@ def collect_hrvatske_ceste(session: requests.Session, today: date) -> list[Job]:
         )
         if job is not None:
             jobs.append(job)
-    logger.info("Hrvatske ceste VSS sanitary-engineer positions: %s", len(jobs))
+    logger.info("Hrvatske ceste VSS sanitary positions: %s", len(jobs))
     return jobs
 
 
@@ -1050,7 +1049,7 @@ def collect_hrvatske_vode(session: requests.Session, today: date) -> list[Job]:
         )
         if job is not None:
             jobs.append(job)
-    logger.info("Hrvatske vode VSS sanitary-engineer positions: %s", len(jobs))
+    logger.info("Hrvatske vode VSS sanitary positions: %s", len(jobs))
     return jobs
 
 
@@ -1061,7 +1060,7 @@ def collect_hzpp(session: requests.Session, today: date) -> list[Job]:
     job_list = archive.find_previous("ul") if archive else None
     jobs: list[Job] = []
     if job_list is None:
-        logger.info("HŽ Putnički prijevoz VSS sanitary-engineer positions: 0")
+        logger.info("HŽ Putnički prijevoz VSS sanitary positions: 0")
         return jobs
     for item in job_list.find_all("li", recursive=False):
         text = collapse(item.get_text(" ", strip=True))
@@ -1086,7 +1085,7 @@ def collect_hzpp(session: requests.Session, today: date) -> list[Job]:
         )
         if job is not None:
             jobs.append(job)
-    logger.info("HŽ Putnički prijevoz VSS sanitary-engineer positions: %s", len(jobs))
+    logger.info("HŽ Putnički prijevoz VSS sanitary positions: %s", len(jobs))
     return jobs
 
 
@@ -1120,7 +1119,7 @@ def collect_hzinfra(session: requests.Session, today: date) -> list[Job]:
         )
         if job is not None:
             jobs.append(job)
-    logger.info("HŽ Infrastruktura VSS sanitary-engineer positions: %s", len(jobs))
+    logger.info("HŽ Infrastruktura VSS sanitary positions: %s", len(jobs))
     return jobs
 
 
@@ -1165,7 +1164,7 @@ def collect_hzcargo(session: requests.Session, today: date) -> list[Job]:
         )
         if job is not None:
             jobs.append(job)
-    logger.info("HŽ Cargo VSS sanitary-engineer positions: %s", len(jobs))
+    logger.info("HŽ Cargo VSS sanitary positions: %s", len(jobs))
     return jobs
 
 
@@ -1190,7 +1189,7 @@ def collect_hac(session: requests.Session, today: date) -> list[Job]:
         )
         if job is not None:
             jobs.append(job)
-    logger.info("HAC VSS sanitary-engineer positions: %s", len(jobs))
+    logger.info("HAC VSS sanitary positions: %s", len(jobs))
     return jobs
 
 
@@ -1230,12 +1229,12 @@ def collect_hrsume(session: requests.Session, today: date) -> list[Job]:
         )
         if job is not None:
             jobs.append(job)
-    logger.info("Hrvatske šume VSS sanitary-engineer positions: %s", len(jobs))
+    logger.info("Hrvatske šume VSS sanitary positions: %s", len(jobs))
     return jobs
 
 
 def scrape_holding(sent_ids: set[str]) -> list[Job]:
-    """Open VSS sanitary-engineer posts on the Zagrebački Holding board."""
+    """Open VSS sanitary posts on the Zagrebački Holding board."""
     session = make_session()
     today = date.today()
     logger.info("Reading Holding board %s", HOLDING_LIST_URL)
@@ -1273,7 +1272,7 @@ def scrape_holding(sent_ids: set[str]) -> list[Job]:
             logger.warning("Could not read Holding notice %s", url)
             continue
         if not matches_vss_sanitary(f"{title}\n{details}"):
-            logger.info("Skipping Holding post without VSS sanitary engineer: %s", title)
+            logger.info("Skipping Holding post without VSS sanitary role: %s", title)
             continue
         job = make_job(
             "holding",
@@ -1288,7 +1287,7 @@ def scrape_holding(sent_ids: set[str]) -> list[Job]:
             continue
         seen.add(job.key)
         jobs.append(job)
-    logger.info("Holding VSS sanitary-engineer positions: %s", len(jobs))
+    logger.info("Holding VSS sanitary positions: %s", len(jobs))
     return jobs
 
 
@@ -1364,14 +1363,14 @@ def render_messages(jobs: list[Job]) -> tuple[str, str]:
     ordered = sorted(jobs, key=lambda job: (job.office.lower(), job.title.lower()))
     text_lines = [
         "Novi oglasi za radna mjesta VSS u Zagrebu.",
-        "Državni portal: sva VSS mjesta Ministarstva zdravstva i Ministarstva zaštite okoliša u Zagrebu. Ostali izvori: sanitarni inženjer.",
+        "Državni portal: sva VSS mjesta Ministarstva zdravstva i Ministarstva zaštite okoliša u Zagrebu. Ostali izvori: sanitarni.",
         "",
     ]
     html_parts = [
         "<!DOCTYPE html>",
         "<html><body>",
         "<p>Novi oglasi za radna mjesta VSS u Zagrebu.<br>"
-        "Državni portal: sva VSS mjesta Ministarstva zdravstva i Ministarstva zaštite okoliša u Zagrebu. Ostali izvori: sanitarni inženjer.</p>",
+        "Državni portal: sva VSS mjesta Ministarstva zdravstva i Ministarstva zaštite okoliša u Zagrebu. Ostali izvori: sanitarni.</p>",
     ]
     for job in ordered:
         text_lines.append(format_job_text(job))
