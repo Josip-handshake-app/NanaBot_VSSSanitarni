@@ -18,7 +18,7 @@ Daily check for higher-education (`VSS`) public jobs in Zagreb, narrowed to sani
 - Hrvatske autoceste: https://www.hac.hr/o-nama/zaposljavanje
 - Hrvatske šume: https://www.hrsume.hr/vijesti/
 
-On selekcija.gov.hr a job is kept when professional qualification contains `VSS` and the workplace contains Zagreb. On every other source the notice must ask for `VSS`, `visoka stručna sprema`, `magistar`, or `diplomski studij`, name a sanitary engineer (`sanitarn` together with `inženjer` or `inzenjer`), and place the job in Zagreb. The first successful run emails every current match. Later runs email only ids that are not yet in `sent_jobs.json`.
+On selekcija.gov.hr a job is kept only when the employer is Ministarstvo zdravstva or Ministarstvo zaštite okoliša i zelene tranzicije, the qualification contains `VSS`, and the workplace contains Zagreb. Sanitary engineering is not required there. On every other source the notice must ask for `VSS`, `visoka stručna sprema`, `magistar`, or `diplomski studij`, contain `sanitarn` (sanitarni, sanitarna, sanitarnog), and place the job in Zagreb. The first successful run emails every current match. Later runs email only ids that are not yet in `sent_jobs.json`.
 
 ## GitHub Actions
 
